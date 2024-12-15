@@ -5,7 +5,7 @@ export function stopAnimation() {
         if (element) element.remove();
         console.log("Animation stopped successfully");
     } catch (error) {
-        console.error("Failed to stop animation");
+        console.error(error + ": failed to stop animation");
     }
 }
 
