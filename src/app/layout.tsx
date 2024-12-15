@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import "@/assets/font_awesome_pro/css/all.css";
+import LoadingAnimation from "@/components/LoadingAnimation";
+import { TERMINAL_LINES } from "@/constants/animation.constant";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,8 +30,12 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <LoadingAnimation
+          maxLines={TERMINAL_LINES.length}
+          terminalLines={TERMINAL_LINES}
+        />
         {children}
       </body>
     </html>
   );
-}
+};
