@@ -31,7 +31,6 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <LoadingAnimation
-          maxLines={TERMINAL_LINES.length}
           terminalLines={TERMINAL_LINES}
         />
         {children}
