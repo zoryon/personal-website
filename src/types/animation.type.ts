@@ -1,3 +1,5 @@
+import { RefObject } from "react";
+
 export interface LoadingAnimationProps {
     terminalLines: TerminalEntry[];
 }
@@ -10,12 +12,16 @@ export interface TerminalEntry {
 
 export interface TerminalProps {
     lines: string[];
-    isAnimating?: boolean;
-    lastLineIndex?: number;
+    completedLines: boolean[];
+    onLineComplete: (index: number) => void;
+    containerRef: RefObject<HTMLDivElement | null>;
 }
 
 export interface TerminalLineProps {
     text: string;
-    isLastLine?: boolean;
-    isAnimating?: boolean;
+    index: number;
+    isLastLine: boolean;
+    isCompleted: boolean;
+    onLineComplete: (index: number) => void;
+    containerRef: RefObject<HTMLDivElement | null>;
 }

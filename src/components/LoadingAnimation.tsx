@@ -2,101 +2,132 @@
 
 import { BASE_COMMAND_LINE } from "@/constants/animation.constant";
 import { Character } from "@/lib/character";
-import { cn, stopAnimation } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { isLastLine, stopAnimation } from "@/lib/animation.lib";
 import {
     LoadingAnimationProps,
     TerminalLineProps,
-    TerminalProps
+    TerminalProps,
 } from "@/types/animation.type";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
+import BouncingIcon from "./BouncingIcon";
 
 const LoadingAnimation: React.FC<LoadingAnimationProps> = ({ terminalLines }) => {
     const [lines, setLines] = useState<string[]>([]);
-    const [isAnimating, setIsAnimating] = useState<boolean>(true);
+    const [completedLines, setCompletedLines] = useState<boolean[]>([]);
+    const loadingAnimationRef = useRef<HTMLDivElement>(null);
+
+    const promisesPending = useRef<number>(0);
+
+    const incrementPromiseCounter = ({
+        resolve,
+        time,
+    }: {
+        resolve: (value?: unknown) => void;
+        time: number;
+    }) => {
+        promisesPending.current++;
+        setTimeout(() => {
+            resolve();
+            promisesPending.current--;
+        }, time);
+    };
 
     useEffect(() => {
-        // Function to process the terminal commands and responses
         const processEntries = async () => {
             for (const entry of terminalLines) {
-                if (entry.command?.toLowerCase() === "clear") {
-                    await new Promise((resolve) => setTimeout(resolve, 1000));
-                    // display "clear" command
-                    setLines((prev) => [
-                        ...prev,
-                        `${BASE_COMMAND_LINE}${entry.path}${Character.getSpace()}clear`
-                    ]);
+                if (entry.command.toLowerCase() !== Character.getClear()) {
+                    // NOT clear case
+                    await new Promise((resolve) => incrementPromiseCounter({ resolve, time: 1000 }));
 
-                    await new Promise((resolve) => setTimeout(resolve, 1200));
-                    setLines([]); // clear terminal
-                } else {
-                    // display the command
-                    await new Promise((resolve) => setTimeout(resolve, 1000));
-                    setLines((prev) => [
-                        ...prev,
-                        `${BASE_COMMAND_LINE}${entry.path}${Character.getSpace()}${entry.command}`
-                    ]);
+                    const newCommandLine = `${BASE_COMMAND_LINE}${entry.path}${Character.getSpace()}${entry.command}`;
+                    setLines((prev) => [...prev, newCommandLine]);
+                    setCompletedLines((prev) => [...prev, false]);
 
-                    // display each response line
                     for (let i = 0; i < entry.response.length; i++) {
-                        await new Promise((resolve) => setTimeout(
-                            resolve,
-                            i === entry.response.length - 1 ? 1000 : 500
-                        ));
+                        const delayTime = i === entry.response.length - 1 ? 1000 : 500;
+                        await new Promise((resolve) =>
+                            incrementPromiseCounter({ resolve, time: delayTime })
+                        );
+
                         setLines((prev) => [...prev, entry.response[i]]);
+                        setCompletedLines((prev) => [...prev, false]);
                     }
+                } else {
+                    // clear case
+                    await new Promise((resolve) => incrementPromiseCounter({ resolve, time: 1000 }));
+
+                    const newClearLine = `${BASE_COMMAND_LINE}${entry.path}${Character.getSpace()}${Character.getClear()}`;
+                    setLines((prev) => [...prev, newClearLine]);
+                    setCompletedLines((prev) => [...prev, false]);
+
+                    await new Promise((resolve) => incrementPromiseCounter({ resolve, time: 1200 }));
+
+                    setLines([]);
+                    setCompletedLines([]);
                 }
             }
 
-            setIsAnimating(false);
-
-            // cleanup and remove the animation element after completion
-            setTimeout(() => {
-                stopAnimation();
-            }, 2000);
+            if (promisesPending.current === 0) {
+                setTimeout(stopAnimation, 2000);
+            }
         };
 
         processEntries();
     }, [terminalLines]);
 
+    const handleLineComplete = (index: number) => {
+        setCompletedLines(prev => {
+            const newCompletedLines = [...prev];
+            newCompletedLines[index] = true;
+            return newCompletedLines;
+        });
+    };
+
     return (
         <div
             id="loading-animation"
-            className="w-screen h-screen flex justify-center items-center bg-green-950"
+            ref={loadingAnimationRef}
+            className="w-screen min-h-screen flex justify-center items-center bg-green-950"
         >
             <Terminal
                 lines={lines}
-                isAnimating={isAnimating}
-                lastLineIndex={lines.length - 1}
+                completedLines={completedLines}
+                onLineComplete={handleLineComplete}
+                containerRef={loadingAnimationRef}
             />
         </div>
     );
 };
 
-const Terminal: React.FC<TerminalProps> = ({ lines, isAnimating, lastLineIndex }) => {
+const Terminal: React.FC<TerminalProps> = ({
+    lines,
+    completedLines,
+    onLineComplete,
+    containerRef
+}) => {
     return (
         <div
-            className="w-full h-full p-4 bg-green-950 flex flex-col
-            justify-start items-start"
+            className="w-full min-h-screen p-4 bg-green-950 flex flex-col justify-start items-start"
         >
-            <div 
-                className="whitespace-nowrap text-green-400 font-mono
-                text-xs sm:text-sm mb-5 hover:cursor-pointer"
+            <div
+                className="flex items-center gap-3 whitespace-nowrap text-green-400 font-mono text-xs sm:text-sm mb-5 hover:cursor-pointer"
                 onClick={() => stopAnimation()}
             >
-                # stop animation
+                <span># stop animation</span>
+                <BouncingIcon iconName="fa-solid fa-hand-pointer" />
             </div>
             <AnimatePresence>
                 {lines.map((line, index) => (
                     <TerminalLine
                         key={index}
                         text={line}
-                        isLastLine={index === lastLineIndex}
-                        isAnimating={
-                            isAnimating &&
-                            index === lastLineIndex &&
-                            line.startsWith(BASE_COMMAND_LINE)
-                        }
+                        index={index}
+                        isLastLine={isLastLine({ array: lines, index })}
+                        isCompleted={completedLines[index]}
+                        onLineComplete={onLineComplete}
+                        containerRef={containerRef}
                     />
                 ))}
             </AnimatePresence>
@@ -106,14 +137,31 @@ const Terminal: React.FC<TerminalProps> = ({ lines, isAnimating, lastLineIndex }
 
 const TerminalLine: React.FC<TerminalLineProps> = ({
     text,
-    isLastLine = false,
-    isAnimating = false
+    index,
+    isLastLine,
+    isCompleted,
+    onLineComplete,
+    containerRef,
 }) => {
     const textRef = useRef<HTMLSpanElement>(null);
+    const [shouldWrap, setShouldWrap] = useState(false);
     const [charWidth, setCharWidth] = useState<number>(8);
 
     useEffect(() => {
-        if (isLastLine && isAnimating && textRef.current) {
+        const checkOverflow = () => {
+            if (containerRef.current && textRef.current) {
+                const containerWidth = containerRef.current.offsetWidth;
+                const textWidth = textRef.current.offsetWidth;
+
+                if (textWidth > containerWidth) {
+                    setShouldWrap(true);
+                    onLineComplete(index);
+                }
+            }
+        };
+
+        // Measure character width
+        if (textRef.current) {
             const span = document.createElement("span");
             span.style.visibility = "hidden";
             span.style.position = "absolute";
@@ -121,11 +169,20 @@ const TerminalLine: React.FC<TerminalLineProps> = ({
             span.style.fontFamily = window.getComputedStyle(textRef.current).fontFamily;
             span.textContent = "x";
             document.body.appendChild(span);
-
             setCharWidth(span.offsetWidth);
             document.body.removeChild(span);
         }
-    }, [text, isLastLine, isAnimating]);
+
+        const timeoutId = setTimeout(checkOverflow, 100);
+
+        // Add resize listener
+        window.addEventListener('resize', checkOverflow);
+
+        return () => {
+            clearTimeout(timeoutId);
+            window.removeEventListener('resize', checkOverflow);
+        };
+    }, [text, index, onLineComplete, containerRef]);
 
     return (
         <motion.div
@@ -133,21 +190,17 @@ const TerminalLine: React.FC<TerminalLineProps> = ({
             animate={{ width: "fit-content" }}
             transition={{ duration: 0.5, ease: "easeInOut" }}
             className={cn(
-                `overflow-hidden whitespace-nowrap text-green-400 font-mono
-                text-xs sm:text-sm md:text-xl relative`,
+                `overflow-hidden text-green-400 font-mono text-xs sm:text-sm md:text-xl relative`,
                 !text.startsWith(BASE_COMMAND_LINE) && "pl-5",
-                text.startsWith(BASE_COMMAND_LINE) && "mt-5"
+                text.startsWith(BASE_COMMAND_LINE) && "mt-5",
+                shouldWrap ? "text-wrap" : "whitespace-nowrap"
             )}
         >
             <span ref={textRef}>{text}</span>
-            {isLastLine && isAnimating && (
+            {!isCompleted && text.startsWith(BASE_COMMAND_LINE) && isLastLine && (
                 <motion.span
                     animate={{ opacity: [0, 0.6] }}
-                    transition={{
-                        duration: 0.5,
-                        repeat: Infinity,
-                        repeatType: "reverse"
-                    }}
+                    transition={{ duration: 0.5, repeat: Infinity, repeatType: "reverse" }}
                     style={{ width: `${charWidth}px` }}
                     className="absolute right-0 h-4 sm:h-6 bg-green-400"
                 />
